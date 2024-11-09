@@ -2,10 +2,14 @@
 #include <nemu.h>
 
 extern char _heap_start;
+extern void *heap_alloc_ptr;
 int main(const char *args);
 
 Area heap = RANGE(&_heap_start, PMEM_END);
-static const char mainargs[MAINARGS_MAX_LEN] = MAINARGS_PLACEHOLDER; // defined in CFLAGS
+#ifndef MAINARGS
+#define MAINARGS ""
+#endif
+static const char mainargs[] = MAINARGS;
 
 void putch(char ch) {
   outb(SERIAL_PORT, ch);
@@ -19,6 +23,7 @@ void halt(int code) {
 }
 
 void _trm_init() {
+  heap_alloc_ptr = heap.start;
   int ret = main(mainargs);
   halt(ret);
 }

@@ -1,3 +1,4 @@
+#include "riscv/riscv.h"
 #include <am.h>
 #include <klib-macros.h>
 
@@ -9,13 +10,21 @@ extern char _pmem_start;
 #define PMEM_END  ((uintptr_t)&_pmem_start + PMEM_SIZE)
 
 Area heap = RANGE(&_heap_start, PMEM_END);
-static const char mainargs[MAINARGS_MAX_LEN] = MAINARGS_PLACEHOLDER; // defined in CFLAGS
+#ifndef MAINARGS
+#define MAINARGS ""
+#endif
+static const char mainargs[] = MAINARGS;
 
 void putch(char ch) {
+#define SERIAL_PORT 0xa00003f8
+  outb(SERIAL_PORT, ch);
 }
 
 void halt(int code) {
-  while (1);
+    asm volatile("mv a0, %0; ebreak" :: "r"(code));
+
+    //can't compile without this
+    while (1);
 }
 
 void _trm_init() {
