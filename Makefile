@@ -149,7 +149,16 @@ image: image-dep
 archive: $(ARCHIVE)
 image-dep: $(OBJS) $(LIBS)
 	@echo \# Creating image [$(ARCH)]
-.PHONY: image image-dep archive run $(LIBS)
+.PHONY: image image-dep archive run $(LIBS) install
+
+install: $(INSTALL_DIR)/flags.mk
+
+### Install rules
+$(addprefix $(INSTALL_DIR)/, $(LIBS)): %: 
+
+$(INSTALL_DIR)/flags.mk: 
+	@echo "CFLAGS += " $(INTERFACE_CFLAGS) > $(DST_DIR)/flags.mk
+	@echo "LDFLAGS += " $(INTERFACE_LDFLAGS) >> $(DST_DIR)/flags.mk
 
 ### Clean a single project (remove `build/`)
 clean:
