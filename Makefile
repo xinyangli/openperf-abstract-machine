@@ -44,6 +44,8 @@ WORK_DIR  ?= $(shell pwd)
 DST_DIR   ?= $(WORK_DIR)/build/$(ARCH)
 LIB_BUILDDIR ?= $(DST_DIR)/lib
 INSTALLDIR ?= $(WORK_DIR)/build/install/$(ARCH)
+LIB_INSTALLDIR ?= $(INSTALLDIR)/lib
+INC_INSTALLDIR ?= $(INSTALLDIR)/include
 
 ## 3. General Compilation Flags
 
@@ -84,9 +86,11 @@ AM_CFLAGS  += -lm -g -O3 -MMD -Wall $(addprefix -I, $(AM_INCPATH)) \
               -D__ISA__=\"$(ISA)\" -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
               -D__ARCH__=$(ARCH) -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
               -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
-              -DARCH_H=\"$(ARCH_H)\" \
-              -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
-              -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+              -DARCH_H=\"$(ARCH_H)\"
+AM_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
+AM_INTERFACE_CFLAGS += $(addprefix -I, $(AM_INTERFACE_INCPATH)) \
+                       -lm -DARCH_H=\"$(ARCH_H)\" -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
+                       -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 
@@ -95,14 +99,16 @@ $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 KLIB_SRCS := $(shell find klib/src/ -name "*.c")
 
 KLIB_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
-KLIB_CFLAGS := -MMD -Wall $(addprefix -I, $(KLIB_INCPATH)) \
-               -DARCH_H=\"$(ARCH_H)\" \
+KLIB_CFLAGS += -MMD -Wall $(addprefix -I, $(KLIB_INCPATH)) \
+               -DARCH_H=\"$(ARCH_H)\"
+KLIB_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
+KLIB_INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\" $(addprefix -I, $(KLIB_INTERFACE_INCPATH))
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libklib-$(ARCH).a,KLIB_))
 
-ALL := am klib
-all: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(ALL)))
-$(ALL): %: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, %))
+LIBS := am klib
+libs: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(ALL)))
+$(LIBS): %: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, %))
 
 ### Rule (link): objects (`*.o`) and libraries (`*.a`) -> `IMAGE.elf`, the final ELF binary to be packed into image (ld)
 $(IMAGE).elf: $(OBJS) $(LIBS)
@@ -118,14 +124,22 @@ image-dep: $(OBJS) $(LIBS)
 	@echo \# Creating image [$(ARCH)]
 .PHONY: image image-dep archive run $(LIBS) install
 
-install: $(INSTALL_DIR)/flags.mk
-
 ### Install rules
-$(addprefix $(INSTALL_DIR)/, $(LIBS)): %: 
 
-$(INSTALL_DIR)/flags.mk: 
-	@echo "CFLAGS += " $(INTERFACE_CFLAGS) > $(DST_DIR)/flags.mk
-	@echo "LDFLAGS += " $(INTERFACE_LDFLAGS) >> $(DST_DIR)/flags.mk
+INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
+INTERFACE_CFLAGS += $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
+INTERFACE_LDFLAGS += $(sort $(KLIB_LDFLAGS) $(AM_LDFLAGS))
+
+EXPORT_FLAGS_FILE := $(INSTALLDIR)/flags-$(ARCH).mk
+$(EXPORT_FLAGS_FILE):
+	@mkdir -p $(INSTALLDIR)
+	@echo "CFLAGS += " $(INTERFACE_CFLAGS) > $(EXPORT_FLAGS_FILE)
+	@echo "LDFLAGS += " $(INTERFACE_LDFLAGS) >> $(EXPORT_FLAGS_FILE)
+
+install: $(EXPORT_FLAGS_FILE) $(LIBS)
+	@mkdir -p $(LIB_INSTALLDIR) $(INC_INSTALLDIR)
+	@cp $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(LIBS))) $(LIB_INSTALLDIR)
+	@cp -r $(addsuffix /*, $(INTERFACE_INCPATH)) $(INC_INSTALLDIR)/
 
 ### Clean a single project (remove `build/`)
 clean:
