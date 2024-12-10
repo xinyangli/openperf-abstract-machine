@@ -72,6 +72,7 @@ endif
 
 ## 5. Compilation Rules
 
+BUILDDIR := $(DST_DIR)
 ### Build libam
 
 #### Include archetecture specific build flags
@@ -89,8 +90,19 @@ AM_CFLAGS  += -lm -g -O3 -MMD -Wall $(addprefix -I, $(AM_INCPATH)) \
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 
-ALL := am
+### Build klib
+
+KLIB_SRCS := $(shell find klib/src/ -name "*.c")
+
+KLIB_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
+KLIB_CFLAGS := -MMD -Wall $(addprefix -I, $(KLIB_INCPATH)) \
+               -DARCH_H=\"$(ARCH_H)\" \
+
+$(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libklib-$(ARCH).a,KLIB_))
+
+ALL := am klib
 all: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(ALL)))
+$(ALL): %: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, %))
 
 ### Rule (link): objects (`*.o`) and libraries (`*.a`) -> `IMAGE.elf`, the final ELF binary to be packed into image (ld)
 $(IMAGE).elf: $(OBJS) $(LIBS)
