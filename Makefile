@@ -1,4 +1,5 @@
 # Makefile for AbstractMachine Kernels and Libraries
+include scripts/helpers/rules.mk
 
 ### *Get a more readable version of this Makefile* by `make html` (requires python-markdown)
 html:
@@ -17,9 +18,6 @@ endif
 ### Override checks when `make clean/clean-all/html`
 ifeq ($(findstring $(MAKECMDGOALS),clean|clean-all|html),)
 
-### Print build info message
-$(info # Building $(NAME)-$(MAKECMDGOALS) [$(ARCH)])
-
 ### Check: environment variable `$AM_HOME` looks sane
 ifeq ($(wildcard $(AM_HOME)/am/include/am.h),)
   $(error $$AM_HOME must be an AbstractMachine repo)
@@ -36,33 +34,16 @@ ARCH_SPLIT = $(subst -, ,$(ARCH))
 ISA        = $(word 1,$(ARCH_SPLIT))
 PLATFORM   = $(word 2,$(ARCH_SPLIT))
 
-### Check if there is something to build
-ifeq ($(flavor SRCS), undefined)
-  $(error Nothing to build)
-endif
-
 ### Checks end here
 endif
 
 ## 2. General Compilation Targets
 
 ### Create the destination directory (`build/$ARCH`)
-WORK_DIR  = $(shell pwd)
-DST_DIR   = $(WORK_DIR)/build/$(ARCH)
-$(shell mkdir -p $(DST_DIR))
-
-### Compilation targets (a binary image or archive)
-IMAGE_REL = build/$(NAME)-$(ARCH)
-IMAGE     = $(abspath $(IMAGE_REL))
-ARCHIVE   = $(WORK_DIR)/build/$(NAME)-$(ARCH).a
-
-### Collect the files to be linked: object files (`.o`) and libraries (`.a`)
-OBJS      = $(addprefix $(DST_DIR)/, $(addsuffix .o, $(basename $(SRCS))))
-LIBS     := $(sort $(LIBS) am klib) # lazy evaluation ("=") causes infinite recursions
-LINKAGE   = $(OBJS) \
-  $(addsuffix -$(ARCH).a, $(join \
-    $(addsuffix /build/, $(addprefix $(AM_HOME)/, $(LIBS))), \
-    $(LIBS) ))
+WORK_DIR  ?= $(shell pwd)
+DST_DIR   ?= $(WORK_DIR)/build/$(ARCH)
+LIB_BUILDDIR ?= $(DST_DIR)/lib
+INSTALLDIR ?= $(WORK_DIR)/build/install/$(ARCH)
 
 ## 3. General Compilation Flags
 
@@ -76,26 +57,12 @@ OBJDUMP   ?= $(CROSS_COMPILE)objdump
 OBJCOPY   ?= $(CROSS_COMPILE)objcopy
 READELF   ?= $(CROSS_COMPILE)readelf
 
-### Compilation flags
-INC_PATH += $(WORK_DIR)/include $(addsuffix /include/, $(addprefix $(AM_HOME)/, $(LIBS)))
-INCFLAGS += $(addprefix -I, $(INC_PATH))
-
-ARCH_H := arch/$(ARCH).h
-CFLAGS   += -lm -g -O3 -MMD -Wall $(INCFLAGS) \
-            -D__ISA__=\"$(ISA)\" -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
-            -D__ARCH__=$(ARCH) -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
-            -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
-            -DARCH_H=\"$(ARCH_H)\" \
-            -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
-            -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 CXXFLAGS +=  $(CFLAGS) -ffreestanding -fno-rtti -fno-exceptions
 ASFLAGS  += $(INCFLAGS)
 LDFLAGS  += -z noexecstack
+INTERFACE_LDFLAGS  += -z noexecstack
 
 ## 4. Arch-Specific Configurations
-
-### Paste in arch-specific configurations (e.g., from `scripts/x86_64-qemu.mk`)
--include $(AM_HOME)/scripts/$(ARCH).mk
 
 ### Fall back to native gcc/binutils if there is no cross compiler
 ifeq ($(wildcard $(shell which $(CC))),)
@@ -105,42 +72,30 @@ endif
 
 ## 5. Compilation Rules
 
-### Rule (compile): a single `.c` -> `.o` (gcc)
-$(DST_DIR)/%.o: %.c
-	@mkdir -p $(dir $@) && echo + CC $<
-	@$(CC) -std=gnu11 $(CFLAGS) -c -o $@ $(realpath $<)
+### Build libam
 
-### Rule (compile): a single `.cc` -> `.o` (g++)
-$(DST_DIR)/%.o: %.cc
-	@mkdir -p $(dir $@) && echo + CXX $<
-	@$(CXX) -std=c++17 $(CXXFLAGS) -c -o $@ $(realpath $<)
+#### Include archetecture specific build flags
+include $(AM_HOME)/scripts/$(ARCH).mk
 
-### Rule (compile): a single `.cpp` -> `.o` (g++)
-$(DST_DIR)/%.o: %.cpp
-	@mkdir -p $(dir $@) && echo + CXX $<
-	@$(CXX) -std=c++17 $(CXXFLAGS) -c -o $@ $(realpath $<)
+#### Generating build rules with ADD_LIBRARY call. Target specific build flags can be tuned via changing prefixed variables (AM_ here)
+AM_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/am/src $(AM_HOME)/klib/include
+AM_CFLAGS  += -lm -g -O3 -MMD -Wall $(addprefix -I, $(AM_INCPATH)) \
+              -D__ISA__=\"$(ISA)\" -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
+              -D__ARCH__=$(ARCH) -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
+              -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
+              -DARCH_H=\"$(ARCH_H)\" \
+              -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
+              -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 
-### Rule (compile): a single `.S` -> `.o` (gcc, which preprocesses and calls as)
-$(DST_DIR)/%.o: %.S
-	@mkdir -p $(dir $@) && echo + AS $<
-	@$(AS) $(ASFLAGS) -c -o $@ $(realpath $<)
+$(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 
-### Rule (recursive make): build a dependent library (am, klib, ...)
-$(LIBS): %:
-	@$(MAKE) -s -C $(AM_HOME)/$* archive
+ALL := am
+all: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(ALL)))
 
 ### Rule (link): objects (`*.o`) and libraries (`*.a`) -> `IMAGE.elf`, the final ELF binary to be packed into image (ld)
 $(IMAGE).elf: $(OBJS) $(LIBS)
 	@echo + LD "->" $(IMAGE_REL).elf
 	@$(LD) $(LDFLAGS) -o $(IMAGE).elf --start-group $(LINKAGE) --end-group
-
-### Rule (archive): objects (`*.o`) -> `ARCHIVE.a` (ar)
-$(ARCHIVE): $(OBJS)
-	@echo + AR "->" $(shell realpath $@ --relative-to .)
-	@$(AR) rcs $(ARCHIVE) $(OBJS)
-
-### Rule (`#include` dependencies): paste in `.d` files generated by gcc on `-MMD`
--include $(addprefix $(DST_DIR)/, $(addsuffix .d, $(basename $(SRCS))))
 
 ## 6. Miscellaneous
 
