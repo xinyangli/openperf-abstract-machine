@@ -87,7 +87,7 @@ AM_CFLAGS  += -lm -g -O3 -MMD -Wall $(addprefix -I, $(AM_INCPATH)) \
               -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
               -DARCH_H=\"$(ARCH_H)\"
 AM_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
-AM_INTERFACE_CFLAGS += $(addprefix -I, $(AM_INTERFACE_INCPATH)) \
+AM_INTERFACE_CFLAGS += $(addprefix -I, $(AM_INTERFACE_INCPATH:%=$(INC_INSTALLDIR))) \
                        -lm -DARCH_H=\"$(ARCH_H)\" -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
                        -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 
@@ -101,7 +101,7 @@ KLIB_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
 KLIB_CFLAGS += -MMD -Wall $(addprefix -I, $(KLIB_INCPATH)) \
                -DARCH_H=\"$(ARCH_H)\"
 KLIB_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
-KLIB_INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\" $(addprefix -I, $(KLIB_INTERFACE_INCPATH))
+KLIB_INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\" $(addprefix -I, $(KLIB_INTERFACE_INCPATH:%=$(INC_INSTALLDIR)))
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libklib-$(ARCH).a,KLIB_))
 
@@ -156,10 +156,10 @@ install-libs: $(LIBS)
 	@install -Dm644 $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(LIBS))) $(LIB_INSTALLDIR)
 
 install-headers: HEADERS := $(shell find $(INTERFACE_INCPATH) -name '*.h')
-install-headers:
-	@echo + INSTALL HEADERS: $(patsubst $(AM_HOME)/%,%,$(HEADERS)) 
+install-headers: $(HEADERS)	# Headers needs to be reinstalled if they are changed 
+	@echo + INSTALL HEADERS: $(INTERFACE_INCPATH)
 	@install -dm755 $(INC_INSTALLDIR)
-	@install -Dm644 $(HEADERS) $(INC_INSTALLDIR)
+	@cp -r $(addsuffix /*, $(INTERFACE_INCPATH)) $(INC_INSTALLDIR)
 
 install: $(EXPORTS) install-libs install-headers
 
