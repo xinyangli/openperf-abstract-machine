@@ -60,7 +60,6 @@ OBJCOPY   ?= $(CROSS_COMPILE)objcopy
 READELF   ?= $(CROSS_COMPILE)readelf
 
 CXXFLAGS +=  $(CFLAGS) -ffreestanding -fno-rtti -fno-exceptions
-ASFLAGS  += $(INCFLAGS)
 LDFLAGS  += -z noexecstack
 INTERFACE_LDFLAGS  += -z noexecstack
 
@@ -122,7 +121,7 @@ image: image-dep
 archive: $(ARCHIVE)
 image-dep: $(OBJS) $(LIBS)
 	@echo \# Creating image [$(ARCH)]
-.PHONY: image image-dep archive run $(LIBS) install
+.PHONY: image image-dep archive run libs $(LIBS) install
 
 ### Install rules
 
@@ -130,16 +129,28 @@ INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
 INTERFACE_CFLAGS += $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
 INTERFACE_LDFLAGS += $(sort $(KLIB_LDFLAGS) $(AM_LDFLAGS))
 
-EXPORT_FLAGS_FILE := $(INSTALLDIR)/flags-$(ARCH).mk
-$(EXPORT_FLAGS_FILE):
-	@mkdir -p $(INSTALLDIR)
-	@echo "CFLAGS += " $(INTERFACE_CFLAGS) > $(EXPORT_FLAGS_FILE)
-	@echo "LDFLAGS += " $(INTERFACE_LDFLAGS) >> $(EXPORT_FLAGS_FILE)
+EXPORT_FLAGS_FILE := $(LIB_INSTALLDIR)/make/flags-$(ARCH).mk
+EXPORT_FLAGS_TEMPLATE := $(file < $(AM_HOME)/scripts/templates/flags.tmpl)
+HELPERS := $(wildcard find scripts/helpers/*.mk)
+EXPORT_HELPERS := $(HELPERS:scripts/helpers/%=$(LIB_INSTALLDIR)/make/%)
 
-install: $(EXPORT_FLAGS_FILE) $(LIBS)
-	@mkdir -p $(LIB_INSTALLDIR) $(INC_INSTALLDIR)
-	@cp $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(LIBS))) $(LIB_INSTALLDIR)
-	@cp -r $(addsuffix /*, $(INTERFACE_INCPATH)) $(INC_INSTALLDIR)/
+test:
+	@echo $(EXPORT_HELPERS)
+	@echo $(LIB_INSTALLDIR)
+
+EXPORTS := $(EXPORT_FLAGS_FILE) $(EXPORT_HELPERS)
+
+$(EXPORT_HELPERS): $(LIB_INSTALLDIR)/make/%: scripts/helpers/%
+	@install -Dm644 $< $(dir $@)
+
+export INTERFACE_CFLAGS INTERFACE_INCPATH INTERFACE_LDFLAGS
+$(EXPORT_FLAGS_FILE):
+	@install -Dm644 <(printf $(EXPORT_FLAGS_TEMPLATE)) $(EXPORT_FLAGS_FILE)
+
+install: $(EXPORTS) $(LIBS)
+	@install -dm755 $(LIB_INSTALLDIR) $(INC_INSTALLDIR)
+	@install -Dm644 $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(LIBS))) $(LIB_INSTALLDIR)
+	@install -Dm644 $(shell find $(INTERFACE_INCPATH) -name '*.h') $(INC_INSTALLDIR)/
 
 ### Clean a single project (remove `build/`)
 clean:
