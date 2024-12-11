@@ -34,7 +34,7 @@ $$(filter %.S.o, $$($(1)OBJS)): $$(BUILDDIR)/%.S.o: %.S
 endef
 
 # Usage:
-# $(1): Library name
+# $(1): Library build path
 # $(2): Library variable prefix
 # E.g: 
 # $(eval $(call ADD_LIBRARY,am-riscv,AM_))
@@ -44,5 +44,21 @@ $(1): $$($(2)OBJS)
 	@mkdir -p $$(dir $$@)
 	@echo + AR "->" $$(patsubst $$(CURDIR)/%,%,$(1))
 	@$$(AR) rcs $$@ $$($(2)OBJS)
+endef
+
+# Usage:
+# $(1): Image build path
+# $(2): Image variable prefix
+# E.g: 
+# $(eval $(call ADD_IMAGE,dummy,DUMMY_))
+define ADD_IMAGE
+$(eval $(call COMPILE_RULES,$(2)))
+$(1).elf: $$($(2)OBJS) 
+	@mkdir -p $$(dir $$@)
+	@echo + LD "->" $$(patsubst $$(CURDIR)/%,%,$(1).elf)
+	@$$(LD) $$($(2)_LDFLAGS) -o $$@ --start-group $$($(2)OBJS) --end-group
+$(1).bin: $(1).elf
+	@echo + OBJCOPY "->" $$(patsubst $$(CURDIR)/%,%,$(1))
+	@$$(OBJCOPY) -S --set-section-flags .bss=alloc,contents -O binary $(1).elf $(1).bin
 endef
 
