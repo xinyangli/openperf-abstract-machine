@@ -8,7 +8,7 @@
 # E.g: 
 # $(eval $(call COMPILE_RULES,AM_))
 define COMPILE_RULES
-$(1)OBJS := $$(addprefix $$(BUILDDIR)/, $$(addsuffix .o, $$($(1)SRCS)))
+$(1)OBJS += $$(addprefix $$(BUILDDIR)/, $$(addsuffix .o, $$($(1)SRCS)))
 ### Rule (compile): a single `.c` -> `.c.o` (gcc)
 $$(filter %.c.o, $$($(1)OBJS)): $$(BUILDDIR)/%.c.o: %.c
 	@mkdir -p $$(dir $$@) && echo + CC $$<
@@ -56,9 +56,9 @@ $(eval $(call COMPILE_RULES,$(2)))
 $(1).elf: $$($(2)OBJS) 
 	@mkdir -p $$(dir $$@)
 	@echo + LD "->" $$(patsubst $$(CURDIR)/%,%,$(1).elf)
-	@$$(LD) $$($(2)LDFLAGS) -o $$@ --start-group $$($(2)OBJS) --end-group
+	@$$(LD) -o $$@ $$(filter-out -l%,$$($(2)LDFLAGS)) --start-group $$($(2)OBJS) $$(filter -l%,$$($(2)LDFLAGS)) --end-group  
 $(1).bin: $(1).elf
-	@echo + OBJCOPY "->" $$(patsubst $$(CURDIR)/%,%,$(1))
+	@echo + OBJCOPY "->" $$(patsubst $$(CURDIR)/%,%,$(1).bin)
 	@$$(OBJCOPY) -S --set-section-flags .bss=alloc,contents -O binary $(1).elf $(1).bin
 endef
 
