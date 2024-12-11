@@ -134,10 +134,6 @@ EXPORT_FLAGS_TEMPLATE := $(file < $(AM_HOME)/scripts/templates/flags.tmpl)
 HELPERS := $(wildcard find scripts/helpers/*.mk)
 EXPORT_HELPERS := $(HELPERS:scripts/helpers/%=$(LIB_INSTALLDIR)/make/%)
 
-test:
-	@echo $(EXPORT_HELPERS)
-	@echo $(LIB_INSTALLDIR)
-
 EXPORTS := $(EXPORT_FLAGS_FILE) $(EXPORT_HELPERS)
 
 $(EXPORT_HELPERS): $(LIB_INSTALLDIR)/make/%: scripts/helpers/%
