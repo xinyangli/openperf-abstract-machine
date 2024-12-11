@@ -9,10 +9,10 @@ html:
 
 ## 1. Basic Setup and Checks
 
-### Default to create a bare-metal kernel image
+### Default to create all static libraries
 ifeq ($(MAKECMDGOALS),)
-  MAKECMDGOALS  = image
-  .DEFAULT_GOAL = image
+  MAKECMDGOALS  = libs
+  .DEFAULT_GOAL = libs
 endif
 
 ### Override checks when `make clean/clean-all/html`
@@ -37,7 +37,7 @@ PLATFORM   = $(word 2,$(ARCH_SPLIT))
 ### Checks end here
 endif
 
-## 2. General Compilation Targets
+## 2. Setup variables pointing to build and install directory
 
 ### Create the destination directory (`build/$ARCH`)
 WORK_DIR  ?= $(shell pwd)
@@ -47,7 +47,7 @@ INSTALLDIR ?= $(WORK_DIR)/build/install/$(ARCH)
 LIB_INSTALLDIR ?= $(INSTALLDIR)/lib
 INC_INSTALLDIR ?= $(INSTALLDIR)/include
 
-## 3. General Compilation Flags
+## 3. Toolchain setup
 
 ### (Cross) compilers, e.g., mips-linux-gnu-g++
 CC        ?= $(CROSS_COMPILE)gcc
@@ -59,17 +59,13 @@ OBJDUMP   ?= $(CROSS_COMPILE)objdump
 OBJCOPY   ?= $(CROSS_COMPILE)objcopy
 READELF   ?= $(CROSS_COMPILE)readelf
 
-CXXFLAGS +=  $(CFLAGS) -ffreestanding -fno-rtti -fno-exceptions
-LDFLAGS  += -z noexecstack
-INTERFACE_LDFLAGS  += -z noexecstack
-
 ## 4. Arch-Specific Configurations
 
-### Fall back to native gcc/binutils if there is no cross compiler
-ifeq ($(wildcard $(shell which $(CC))),)
-  $(info #  $(CC) not found; fall back to default gcc and binutils)
-  CROSS_COMPILE := riscv64-unknown-linux-gnu-
-endif
+# TODO: Removed CROSS_COMPILE toolchain setup as it's too complicated
+# 		  for Makefile to do right. Force the user to provide a CROSS_COMPILE
+# 		  prefix for now. They can also specify CFLAGS and LDFLAGS through
+# 		  environment variable.
+include $(AM_HOME)/scripts/$(ARCH).mk
 
 ## 5. Compilation Rules
 
@@ -77,16 +73,16 @@ BUILDDIR := $(DST_DIR)
 COMMON_CFLAGS := $(CFLAGS) -g -O3 -MMD -Wall \
                  -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
                  -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+INTERFACE_LDFLAGS += -z noexecstack
+INTERFACE_CFLAGS += -fno-asynchronous-unwind-tables \
+                    -fno-builtin -fno-stack-protector \
+                    -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 ### Build libam
 #### Include archetecture specific build flags
-include $(AM_HOME)/scripts/$(ARCH).mk
 COMMON_CFLAGS += -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
                  -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
                  -DARCH_H=\"$(ARCH_H)\"
-INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\" \
-                    -fno-asynchronous-unwind-tables \
-                    -fno-builtin -fno-stack-protector \
-                    -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\"
 
 #### Generating build rules with ADD_LIBRARY call. Target specific build flags can be tuned via changing prefixed variables (AM_ here)
 AM_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/am/src $(AM_HOME)/klib/include
@@ -114,22 +110,7 @@ LIBS := am klib
 libs: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(ALL)))
 $(LIBS): %: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, %))
 
-### Rule (link): objects (`*.o`) and libraries (`*.a`) -> `IMAGE.elf`, the final ELF binary to be packed into image (ld)
-$(IMAGE).elf: $(OBJS) $(LIBS)
-	@echo + LD "->" $(IMAGE_REL).elf
-	@$(LD) $(LDFLAGS) -o $(IMAGE).elf --start-group $(LINKAGE) --end-group
-
-## 6. Miscellaneous
-
-### Build order control
-image: image-dep
-archive: $(ARCHIVE)
-image-dep: $(OBJS) $(LIBS)
-	@echo \# Creating image [$(ARCH)]
-.PHONY: image image-dep archive run libs $(LIBS) install
-
-### Install rules
-
+## 6. Install rules
 INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
 # TODO: Use sort here will cause error on seperated flags, such as: -e _start
 # but without sort, duplicated flags will not be removed.
@@ -172,6 +153,8 @@ install-headers: $(HEADERS)	# Headers needs to be reinstalled if they are change
 	@cp -r $(addsuffix /*, $(INTERFACE_INCPATH)) $(INC_INSTALLDIR)
 
 install: $(EXPORTS) install-libs install-headers $(LDSCRIPTS)
+
+.PHONY: libs $(LIBS) install
 
 ### Clean a single project (remove `build/`)
 clean:

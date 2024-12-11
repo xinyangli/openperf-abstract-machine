@@ -1,4 +1,3 @@
-CROSS_COMPILE := riscv64-linux-gnu-
 AM_CFLAGS        += -static -fno-pic -march=rv64g -mcmodel=medany  -mstrict-align
 AM_ASFLAGS       += -static -fno-pic -march=rv32g_zicsr -mcmodel=medany -O0
 AM_LDFLAGS       += -melf64lriscv -O2
