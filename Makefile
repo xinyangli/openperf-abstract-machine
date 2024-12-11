@@ -141,16 +141,27 @@ test:
 EXPORTS := $(EXPORT_FLAGS_FILE) $(EXPORT_HELPERS)
 
 $(EXPORT_HELPERS): $(LIB_INSTALLDIR)/make/%: scripts/helpers/%
+	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
+	@install -dm755 $(dir $@)
 	@install -Dm644 $< $(dir $@)
 
 export INTERFACE_CFLAGS INTERFACE_INCPATH INTERFACE_LDFLAGS
 $(EXPORT_FLAGS_FILE):
+	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
 	@install -Dm644 <(printf $(EXPORT_FLAGS_TEMPLATE)) $(EXPORT_FLAGS_FILE)
 
-install: $(EXPORTS) $(LIBS)
-	@install -dm755 $(LIB_INSTALLDIR) $(INC_INSTALLDIR)
+install-libs: $(LIBS)
+	@echo + INSTALL LIBS: $(LIBS) 
+	@install -dm755 $(LIB_INSTALLDIR)
 	@install -Dm644 $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(LIBS))) $(LIB_INSTALLDIR)
-	@install -Dm644 $(shell find $(INTERFACE_INCPATH) -name '*.h') $(INC_INSTALLDIR)/
+
+install-headers: HEADERS := $(shell find $(INTERFACE_INCPATH) -name '*.h')
+install-headers:
+	@echo + INSTALL HEADERS: $(patsubst $(AM_HOME)/%,%,$(HEADERS)) 
+	@install -dm755 $(INC_INSTALLDIR)
+	@install -Dm644 $(HEADERS) $(INC_INSTALLDIR)
+
+install: $(EXPORTS) install-libs install-headers
 
 ### Clean a single project (remove `build/`)
 clean:
