@@ -74,22 +74,27 @@ endif
 ## 5. Compilation Rules
 
 BUILDDIR := $(DST_DIR)
+COMMON_CFLAGS := $(CFLAGS) -g -O3 -MMD -Wall \
+                 -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
+                 -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 ### Build libam
-
 #### Include archetecture specific build flags
 include $(AM_HOME)/scripts/$(ARCH).mk
+COMMON_CFLAGS += -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
+                 -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
+                 -DARCH_H=\"$(ARCH_H)\"
+INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\" \
+                    -fno-asynchronous-unwind-tables \
+                    -fno-builtin -fno-stack-protector \
+                    -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
 
 #### Generating build rules with ADD_LIBRARY call. Target specific build flags can be tuned via changing prefixed variables (AM_ here)
 AM_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/am/src $(AM_HOME)/klib/include
-AM_CFLAGS  += -lm -g -O3 -MMD -Wall $(addprefix -I, $(AM_INCPATH)) \
-              -D__ISA__=\"$(ISA)\" -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
-              -D__ARCH__=$(ARCH) -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
-              -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
-              -DARCH_H=\"$(ARCH_H)\"
+AM_CFLAGS += $(COMMON_CFLAGS) $(addprefix -I, $(AM_INCPATH))
 AM_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
-AM_INTERFACE_CFLAGS += $(addprefix -I, $(AM_INTERFACE_INCPATH:%=$(INC_INSTALLDIR))) \
-                       -lm -DARCH_H=\"$(ARCH_H)\" -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
-                       -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+AM_INTERFACE_CFLAGS += 
+                       
+AM_INTERFACE_LDFLAGS += -lm -lam-$(ARCH)
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 
@@ -98,10 +103,10 @@ $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 KLIB_SRCS := $(shell find klib/src/ -name "*.c")
 
 KLIB_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
-KLIB_CFLAGS += -MMD -Wall $(addprefix -I, $(KLIB_INCPATH)) \
-               -DARCH_H=\"$(ARCH_H)\"
+KLIB_CFLAGS += $(COMMON_CFLAGS) $(addprefix -I, $(KLIB_INCPATH))
 KLIB_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
-KLIB_INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\" $(addprefix -I, $(KLIB_INTERFACE_INCPATH:%=$(INC_INSTALLDIR)))
+KLIB_INTERFACE_CFLAGS +=
+KLIB_INTERFACE_LDFLAGS += -lklib-$(ARCH)
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libklib-$(ARCH).a,KLIB_))
 
@@ -126,8 +131,10 @@ image-dep: $(OBJS) $(LIBS)
 ### Install rules
 
 INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
-INTERFACE_CFLAGS += $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
-INTERFACE_LDFLAGS += $(sort $(KLIB_LDFLAGS) $(AM_LDFLAGS))
+# TODO: Use sort here will cause error on seperated flags, such as: -e _start
+# but without sort, duplicated flags will not be removed.
+INTERFACE_CFLAGS += $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR))) $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
+INTERFACE_LDFLAGS += -L$(LIB_INSTALLDIR) $(sort $(KLIB_INTERFACE_LDFLAGS) $(AM_INTERFACE_LDFLAGS))
 
 EXPORT_FLAGS_FILE := $(LIB_INSTALLDIR)/make/flags-$(ARCH).mk
 EXPORT_FLAGS_TEMPLATE := $(file < $(AM_HOME)/scripts/templates/flags.tmpl)
@@ -146,6 +153,13 @@ $(EXPORT_FLAGS_FILE):
 	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
 	@install -Dm644 <(printf $(EXPORT_FLAGS_TEMPLATE)) $(EXPORT_FLAGS_FILE)
 
+LDSCRIPTS := $(patsubst $(AM_HOME)/scripts/%, $(LIB_INSTALLDIR)/ldscripts/%, $(shell find $(AM_HOME)/scripts -name "*.ld"))
+
+$(LDSCRIPTS): $(LIB_INSTALLDIR)/ldscripts/%: $(AM_HOME)/scripts/%
+	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
+	@mkdir -p $(LIB_INSTALLDIR)/ldscripts
+	@install -Dm644 $< $(dir $@)
+
 install-libs: $(LIBS)
 	@echo + INSTALL LIBS: $(LIBS) 
 	@install -dm755 $(LIB_INSTALLDIR)
@@ -157,7 +171,7 @@ install-headers: $(HEADERS)	# Headers needs to be reinstalled if they are change
 	@install -dm755 $(INC_INSTALLDIR)
 	@cp -r $(addsuffix /*, $(INTERFACE_INCPATH)) $(INC_INSTALLDIR)
 
-install: $(EXPORTS) install-libs install-headers
+install: $(EXPORTS) install-libs install-headers $(LDSCRIPTS)
 
 ### Clean a single project (remove `build/`)
 clean:

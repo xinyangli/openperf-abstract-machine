@@ -7,10 +7,14 @@ AM_SRCS := am/src/platform/nemu/trm.c \
            am/src/platform/nemu/ioe/disk.c \
            am/src/platform/nemu/mpe.c
 
-AM_CFLAGS    += -fdata-sections -ffunction-sections
-AM_LDFLAGS   += -T $(AM_HOME)/scripts/linker.ld \
-             --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
-AM_LDFLAGS   += --gc-sections -e _start
+AM_PUBLIC_CFLAGS := -fdata-sections -ffunction-sections
+AM_PUBLIC_LDFLAGS := --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0 \
+                     --gc-sections --entry=_start
+AM_CFLAGS += $(AM_PUBLIC_CFLAGS)
+AM_LDFLAGS += -T$(AM_HOME)/scripts/linker.ld $(AM_PUBLIC_LDFLAGS)
+
+AM_INTERFACE_CFLAGS += $(AM_PUBLIC_CFLAGS)
+AM_INTERFACE_LDFLAGS += -T$(LIB_INSTALLDIR)/ldscripts/linker.ld $(AM_PUBLIC_LDFLAGS)
 
 AM_CFLAGS += -DMAINARGS=\"$(mainargs)\"
 AM_INCPATH += $(AM_HOME)/am/src/platform/nemu/include

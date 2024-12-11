@@ -56,7 +56,7 @@ $(eval $(call COMPILE_RULES,$(2)))
 $(1).elf: $$($(2)OBJS) 
 	@mkdir -p $$(dir $$@)
 	@echo + LD "->" $$(patsubst $$(CURDIR)/%,%,$(1).elf)
-	@$$(LD) $$($(2)_LDFLAGS) -o $$@ --start-group $$($(2)OBJS) --end-group
+	@$$(LD) $$($(2)LDFLAGS) -o $$@ --start-group $$($(2)OBJS) --end-group
 $(1).bin: $(1).elf
 	@echo + OBJCOPY "->" $$(patsubst $$(CURDIR)/%,%,$(1))
 	@$$(OBJCOPY) -S --set-section-flags .bss=alloc,contents -O binary $(1).elf $(1).bin
