@@ -22,6 +22,7 @@ void halt(int code) {
   while (1);
 }
 
+
 void _trm_init() {
   heap_alloc_ptr = heap.start;
   int ret = main(mainargs);

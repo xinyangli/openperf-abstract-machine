@@ -72,11 +72,11 @@ include $(AM_HOME)/scripts/$(ARCH).mk
 BUILDDIR := $(DST_DIR)
 COMMON_CFLAGS := $(CFLAGS) -g -O3 -MMD -Wall \
                  -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
-                 -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+                 -U_FORTIFY_SOURCE -fvisibility=hidden -fno-exceptions -std=gnu11 
 INTERFACE_LDFLAGS += -z noexecstack
 INTERFACE_CFLAGS += -fno-asynchronous-unwind-tables \
                     -fno-builtin -fno-stack-protector \
-                    -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
+                    -U_FORTIFY_SOURCE -fvisibility=hidden -fno-exceptions
 ### Build libam
 #### Include archetecture specific build flags
 COMMON_CFLAGS += -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
@@ -90,7 +90,7 @@ AM_CFLAGS += $(COMMON_CFLAGS) $(addprefix -I, $(AM_INCPATH))
 AM_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
 AM_INTERFACE_CFLAGS += 
                        
-AM_INTERFACE_LDFLAGS += -lm -lam-$(ARCH)
+AM_INTERFACE_LDFLAGS += -lam-$(ARCH)
 
 $(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 
@@ -115,6 +115,7 @@ INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
 # TODO: Use sort here will cause error on seperated flags, such as: -e _start
 # but without sort, duplicated flags will not be removed.
 INTERFACE_CFLAGS += $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR))) $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
+INTERFACE_CXXFLAGS += $(INTERFACE_CFLAGS) $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR)))
 INTERFACE_LDFLAGS += -L$(LIB_INSTALLDIR) $(sort $(KLIB_INTERFACE_LDFLAGS) $(AM_INTERFACE_LDFLAGS))
 
 EXPORT_FLAGS_FILE := $(LIB_INSTALLDIR)/make/flags-$(ARCH).mk
@@ -129,7 +130,7 @@ $(EXPORT_HELPERS): $(LIB_INSTALLDIR)/make/%: scripts/helpers/%
 	@install -dm755 $(dir $@)
 	@install -Dm644 $< $(dir $@)
 
-export INTERFACE_CFLAGS INTERFACE_INCPATH INTERFACE_LDFLAGS
+export INTERFACE_CFLAGS INTERFACE_CXXFLAGS INTERFACE_ASFLAGS INTERFACE_INCPATH INTERFACE_LDFLAGS
 $(EXPORT_FLAGS_FILE):
 	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
 	@install -Dm644 <(printf $(EXPORT_FLAGS_TEMPLATE)) $(EXPORT_FLAGS_FILE)
