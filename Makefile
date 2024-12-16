@@ -1,4 +1,5 @@
 # Makefile for AbstractMachine Kernels and Libraries
+include scripts/helpers/rules.mk
 
 ### *Get a more readable version of this Makefile* by `make html` (requires python-markdown)
 html:
@@ -8,17 +9,14 @@ html:
 
 ## 1. Basic Setup and Checks
 
-### Default to create a bare-metal kernel image
+### Default to create all static libraries
 ifeq ($(MAKECMDGOALS),)
-  MAKECMDGOALS  = image
-  .DEFAULT_GOAL = image
+  MAKECMDGOALS  = libs
+  .DEFAULT_GOAL = libs
 endif
 
 ### Override checks when `make clean/clean-all/html`
 ifeq ($(findstring $(MAKECMDGOALS),clean|clean-all|html),)
-
-### Print build info message
-$(info # Building $(NAME)-$(MAKECMDGOALS) [$(ARCH)])
 
 ### Check: environment variable `$AM_HOME` looks sane
 ifeq ($(wildcard $(AM_HOME)/am/include/am.h),)
@@ -36,35 +34,20 @@ ARCH_SPLIT = $(subst -, ,$(ARCH))
 ISA        = $(word 1,$(ARCH_SPLIT))
 PLATFORM   = $(word 2,$(ARCH_SPLIT))
 
-### Check if there is something to build
-ifeq ($(flavor SRCS), undefined)
-  $(error Nothing to build)
-endif
-
 ### Checks end here
 endif
 
-## 2. General Compilation Targets
+## 2. Setup variables pointing to build and install directory
 
 ### Create the destination directory (`build/$ARCH`)
-WORK_DIR  = $(shell pwd)
-DST_DIR   = $(WORK_DIR)/build/$(ARCH)
-$(shell mkdir -p $(DST_DIR))
+WORK_DIR  ?= $(shell pwd)
+DST_DIR   ?= $(WORK_DIR)/build/$(ARCH)
+LIB_BUILDDIR ?= $(DST_DIR)/lib
+INSTALLDIR ?= $(WORK_DIR)/build/install/$(ARCH)
+LIB_INSTALLDIR ?= $(INSTALLDIR)/lib
+INC_INSTALLDIR ?= $(INSTALLDIR)/include
 
-### Compilation targets (a binary image or archive)
-IMAGE_REL = build/$(NAME)-$(ARCH)
-IMAGE     = $(abspath $(IMAGE_REL))
-ARCHIVE   = $(WORK_DIR)/build/$(NAME)-$(ARCH).a
-
-### Collect the files to be linked: object files (`.o`) and libraries (`.a`)
-OBJS      = $(addprefix $(DST_DIR)/, $(addsuffix .o, $(basename $(SRCS))))
-LIBS     := $(sort $(LIBS) am klib) # lazy evaluation ("=") causes infinite recursions
-LINKAGE   = $(OBJS) \
-  $(addsuffix -$(ARCH).a, $(join \
-    $(addsuffix /build/, $(addprefix $(AM_HOME)/, $(LIBS))), \
-    $(LIBS) ))
-
-## 3. General Compilation Flags
+## 3. Toolchain setup
 
 ### (Cross) compilers, e.g., mips-linux-gnu-g++
 CC        ?= $(CROSS_COMPILE)gcc
@@ -76,80 +59,103 @@ OBJDUMP   ?= $(CROSS_COMPILE)objdump
 OBJCOPY   ?= $(CROSS_COMPILE)objcopy
 READELF   ?= $(CROSS_COMPILE)readelf
 
-### Compilation flags
-INC_PATH += $(WORK_DIR)/include $(addsuffix /include/, $(addprefix $(AM_HOME)/, $(LIBS)))
-INCFLAGS += $(addprefix -I, $(INC_PATH))
-
-ARCH_H := arch/$(ARCH).h
-CFLAGS   += -lm -g -O3 -MMD -Wall $(INCFLAGS) \
-            -D__ISA__=\"$(ISA)\" -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
-            -D__ARCH__=$(ARCH) -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
-            -D__PLATFORM__=$(PLATFORM) -D__PLATFORM_$(shell echo $(PLATFORM) | tr a-z A-Z | tr - _) \
-            -DARCH_H=\"$(ARCH_H)\" \
-            -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
-            -Wno-main -U_FORTIFY_SOURCE -fvisibility=hidden
-CXXFLAGS +=  $(CFLAGS) -ffreestanding -fno-rtti -fno-exceptions
-ASFLAGS  += $(INCFLAGS)
-LDFLAGS  += -z noexecstack
-
 ## 4. Arch-Specific Configurations
 
-### Paste in arch-specific configurations (e.g., from `scripts/x86_64-qemu.mk`)
--include $(AM_HOME)/scripts/$(ARCH).mk
-
-### Fall back to native gcc/binutils if there is no cross compiler
-ifeq ($(wildcard $(shell which $(CC))),)
-  $(info #  $(CC) not found; fall back to default gcc and binutils)
-  CROSS_COMPILE := riscv64-unknown-linux-gnu-
-endif
+# TODO: Removed CROSS_COMPILE toolchain setup as it's too complicated
+# 		  for Makefile to do right. Force the user to provide a CROSS_COMPILE
+# 		  prefix for now. They can also specify CFLAGS and LDFLAGS through
+# 		  environment variable.
+include $(AM_HOME)/scripts/$(ARCH).mk
 
 ## 5. Compilation Rules
 
-### Rule (compile): a single `.c` -> `.o` (gcc)
-$(DST_DIR)/%.o: %.c
-	@mkdir -p $(dir $@) && echo + CC $<
-	@$(CC) -std=gnu11 $(CFLAGS) -c -o $@ $(realpath $<)
+BUILDDIR := $(DST_DIR)
+COMMON_CFLAGS := $(CFLAGS) -g -O3 -MMD -Wall \
+                 -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
+                 -U_FORTIFY_SOURCE -fvisibility=hidden -fno-exceptions -std=gnu11 
+INTERFACE_LDFLAGS += -z noexecstack
+INTERFACE_CFLAGS += -fno-asynchronous-unwind-tables \
+                    -fno-builtin -fno-stack-protector \
+                    -U_FORTIFY_SOURCE -fvisibility=hidden -fno-exceptions
+### Build libam
+#### Include archetecture specific build flags
+COMMON_CFLAGS += -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
+                 -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
+                 -DARCH_H=\"$(ARCH_H)\"
+INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\"
 
-### Rule (compile): a single `.cc` -> `.o` (g++)
-$(DST_DIR)/%.o: %.cc
-	@mkdir -p $(dir $@) && echo + CXX $<
-	@$(CXX) -std=c++17 $(CXXFLAGS) -c -o $@ $(realpath $<)
+#### Generating build rules with ADD_LIBRARY call. Target specific build flags can be tuned via changing prefixed variables (AM_ here)
+AM_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/am/src $(AM_HOME)/klib/include
+AM_CFLAGS += $(COMMON_CFLAGS) $(addprefix -I, $(AM_INCPATH))
+AM_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
+AM_INTERFACE_CFLAGS += 
+                       
+AM_INTERFACE_LDFLAGS += -lam-$(ARCH)
 
-### Rule (compile): a single `.cpp` -> `.o` (g++)
-$(DST_DIR)/%.o: %.cpp
-	@mkdir -p $(dir $@) && echo + CXX $<
-	@$(CXX) -std=c++17 $(CXXFLAGS) -c -o $@ $(realpath $<)
+$(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libam-$(ARCH).a,AM_))
 
-### Rule (compile): a single `.S` -> `.o` (gcc, which preprocesses and calls as)
-$(DST_DIR)/%.o: %.S
-	@mkdir -p $(dir $@) && echo + AS $<
-	@$(AS) $(ASFLAGS) -c -o $@ $(realpath $<)
+### Build klib
 
-### Rule (recursive make): build a dependent library (am, klib, ...)
-$(LIBS): %:
-	@$(MAKE) -s -C $(AM_HOME)/$* archive
+KLIB_SRCS := $(shell find klib/src/ -name "*.c")
 
-### Rule (link): objects (`*.o`) and libraries (`*.a`) -> `IMAGE.elf`, the final ELF binary to be packed into image (ld)
-$(IMAGE).elf: $(OBJS) $(LIBS)
-	@echo + LD "->" $(IMAGE_REL).elf
-	@$(LD) $(LDFLAGS) -o $(IMAGE).elf --start-group $(LINKAGE) --end-group
+KLIB_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
+KLIB_CFLAGS += $(COMMON_CFLAGS) $(addprefix -I, $(KLIB_INCPATH))
+KLIB_INTERFACE_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/klib/include
+KLIB_INTERFACE_CFLAGS +=
+KLIB_INTERFACE_LDFLAGS += -lklib-$(ARCH)
 
-### Rule (archive): objects (`*.o`) -> `ARCHIVE.a` (ar)
-$(ARCHIVE): $(OBJS)
-	@echo + AR "->" $(shell realpath $@ --relative-to .)
-	@$(AR) rcs $(ARCHIVE) $(OBJS)
+$(eval $(call ADD_LIBRARY,$(LIB_BUILDDIR)/libklib-$(ARCH).a,KLIB_))
 
-### Rule (`#include` dependencies): paste in `.d` files generated by gcc on `-MMD`
--include $(addprefix $(DST_DIR)/, $(addsuffix .d, $(basename $(SRCS))))
+LIBS := am klib
+libs: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(ALL)))
+$(LIBS): %: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, %))
 
-## 6. Miscellaneous
+## 6. Install rules
+INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
+# TODO: Use sort here will cause error on seperated flags, such as: -e _start
+# but without sort, duplicated flags will not be removed.
+INTERFACE_CFLAGS += $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR))) $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
+INTERFACE_CXXFLAGS += $(INTERFACE_CFLAGS) $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR)))
+INTERFACE_LDFLAGS += -L$(LIB_INSTALLDIR) $(sort $(KLIB_INTERFACE_LDFLAGS) $(AM_INTERFACE_LDFLAGS))
 
-### Build order control
-image: image-dep
-archive: $(ARCHIVE)
-image-dep: $(OBJS) $(LIBS)
-	@echo \# Creating image [$(ARCH)]
-.PHONY: image image-dep archive run $(LIBS)
+EXPORT_FLAGS_FILE := $(LIB_INSTALLDIR)/make/flags-$(ARCH).mk
+EXPORT_FLAGS_TEMPLATE := $(file < $(AM_HOME)/scripts/templates/flags.tmpl)
+HELPERS := $(wildcard find scripts/helpers/*.mk)
+EXPORT_HELPERS := $(HELPERS:scripts/helpers/%=$(LIB_INSTALLDIR)/make/%)
+
+EXPORTS := $(EXPORT_FLAGS_FILE) $(EXPORT_HELPERS)
+
+$(EXPORT_HELPERS): $(LIB_INSTALLDIR)/make/%: scripts/helpers/%
+	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
+	@install -dm755 $(dir $@)
+	@install -Dm644 $< $(dir $@)
+
+export INTERFACE_CFLAGS INTERFACE_CXXFLAGS INTERFACE_ASFLAGS INTERFACE_INCPATH INTERFACE_LDFLAGS
+$(EXPORT_FLAGS_FILE):
+	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
+	@install -Dm644 <(printf $(EXPORT_FLAGS_TEMPLATE)) $(EXPORT_FLAGS_FILE)
+
+LDSCRIPTS := $(patsubst $(AM_HOME)/scripts/%, $(LIB_INSTALLDIR)/ldscripts/%, $(shell find $(AM_HOME)/scripts -name "*.ld"))
+
+$(LDSCRIPTS): $(LIB_INSTALLDIR)/ldscripts/%: $(AM_HOME)/scripts/%
+	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
+	@mkdir -p $(LIB_INSTALLDIR)/ldscripts
+	@install -Dm644 $< $(dir $@)
+
+install-libs: $(LIBS)
+	@echo + INSTALL LIBS: $(LIBS) 
+	@install -dm755 $(LIB_INSTALLDIR)
+	@install -Dm644 $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, $(LIBS))) $(LIB_INSTALLDIR)
+
+install-headers: HEADERS := $(shell find $(INTERFACE_INCPATH) -name '*.h')
+install-headers: $(HEADERS)	# Headers needs to be reinstalled if they are changed 
+	@echo + INSTALL HEADERS: $(INTERFACE_INCPATH)
+	@install -dm755 $(INC_INSTALLDIR)
+	@cp -r $(addsuffix /*, $(INTERFACE_INCPATH)) $(INC_INSTALLDIR)
+
+install: $(EXPORTS) install-libs install-headers $(LDSCRIPTS)
+
+.PHONY: libs $(LIBS) install
 
 ### Clean a single project (remove `build/`)
 clean:
