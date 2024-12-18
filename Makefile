@@ -18,21 +18,26 @@ endif
 ### Override checks when `make clean/clean-all/html`
 ifeq ($(findstring $(MAKECMDGOALS),clean|clean-all|html),)
 
-### Check: environment variable `$AM_HOME` looks sane
+AM_HOME ?= ./
+
+AM_HOME := $(strip $(realpath $(AM_HOME)))
+$(info $$(AM_HOME): "$(AM_HOME)")
+
+## Check: environment variable `$AM_HOME` looks sane
 ifeq ($(wildcard $(AM_HOME)/am/include/am.h),)
   $(error $$AM_HOME must be an AbstractMachine repo)
 endif
 
 ### Check: environment variable `$ARCH` must be in the supported list
-ARCHS = $(basename $(notdir $(shell ls $(AM_HOME)/scripts/*.mk)))
-ifeq ($(filter $(ARCHS), $(ARCH)), )
-  $(error Expected $$ARCH in {$(ARCHS)}, Got "$(ARCH)")
-endif
+# ARCHS := $(basename $(notdir $(shell ls $(AM_HOME)/scripts/*.mk)))
+# ifeq ($(filter $(ARCHS), $(ARCH)), )
+#   $(error Expected $$ARCH in {$(ARCHS)}, Got "$(ARCH)")
+# endif
 
 ### Extract instruction set architecture (`ISA`) and platform from `$ARCH`. Example: `ARCH=x86_64-qemu -> ISA=x86_64; PLATFORM=qemu`
-ARCH_SPLIT = $(subst -, ,$(ARCH))
-ISA        = $(word 1,$(ARCH_SPLIT))
-PLATFORM   = $(word 2,$(ARCH_SPLIT))
+ARCH_SPLIT := $(subst -, ,$(ARCH))
+ISA        := $(word 1,$(ARCH_SPLIT))
+PLATFORM   := $(word 2,$(ARCH_SPLIT))
 
 ### Checks end here
 endif
@@ -61,10 +66,13 @@ READELF   ?= $(CROSS_COMPILE)readelf
 
 ## 4. Arch-Specific Configurations
 
+# Defualt values, could be overriden in included file
+ARCH_H := arch/$(ARCH).h
 # TODO: Removed CROSS_COMPILE toolchain setup as it's too complicated
 # 		  for Makefile to do right. Force the user to provide a CROSS_COMPILE
 # 		  prefix for now. They can also specify CFLAGS and LDFLAGS through
 # 		  environment variable.
+#
 include $(AM_HOME)/scripts/$(ARCH).mk
 
 ## 5. Compilation Rules
@@ -73,7 +81,7 @@ BUILDDIR := $(DST_DIR)
 COMMON_CFLAGS := $(CFLAGS) -g -O3 -MMD -Wall \
                  -fno-asynchronous-unwind-tables -fno-builtin -fno-stack-protector \
                  -U_FORTIFY_SOURCE -fvisibility=hidden -fno-exceptions -std=gnu11 
-INTERFACE_LDFLAGS += -z noexecstack
+INTERFACE_LDFLAGS += -Wl,-znoexecstack
 INTERFACE_CFLAGS += -fno-asynchronous-unwind-tables \
                     -fno-builtin -fno-stack-protector \
                     -U_FORTIFY_SOURCE -fvisibility=hidden -fno-exceptions

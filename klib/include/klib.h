@@ -4,12 +4,11 @@
 #include <am.h>
 #include <stdarg.h>
 #include <stddef.h>
+#if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-//#define __NATIVE_USE_KLIB__
 
 // string.h
 char *stpcpy(char *dst, const char *src);
@@ -26,8 +25,7 @@ int strcmp(const char *s1, const char *s2);
 int strncmp(const char *s1, const char *s2, size_t n);
 void *memchr(const void *src, int c, size_t n);
 
-
-//stdlib.h
+// stdlib.h
 void srand(unsigned int seed);
 int rand(void);
 void *malloc(size_t size);
@@ -54,8 +52,20 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap);
   } while (0)
 #endif
 
+#ifndef __cplusplus
+// static_assert is keyword in c++
+#define static_assert(const_cond)                                              \
+  static char CONCAT(_static_assert_, __LINE__)[(const_cond) ? 1 : -1]         \
+      __attribute__((unused))
+#endif
+
 #ifdef __cplusplus
 }
 #endif
-
-#endif
+#else
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#endif // !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
+#endif // KLIB_H_

@@ -51,12 +51,20 @@ endef
 # $(2): Image variable prefix
 # E.g: 
 # $(eval $(call ADD_IMAGE,dummy,DUMMY_))
+# Note:
+# We use $(CC) instead of directly calling $(LD)
 define ADD_IMAGE
 $(eval $(call COMPILE_RULES,$(2)))
-$(1).elf: $$($(2)OBJS) 
+$(1).elf: comma := ,
+$(1).elf: $$($(2)OBJS)
 	@mkdir -p $$(dir $$@)
 	@echo + LD "->" $$(patsubst $$(CURDIR)/%,%,$(1).elf)
-	@$$(LD) -o $$@ $$(filter-out -l%,$$($(2)LDFLAGS)) --start-group $$($(2)OBJS) $$(filter -l%,$$($(2)LDFLAGS)) --end-group  
+	@$$(CC) -o $$@ $$($(2)CCLDFLAGS) \
+		$$(filter-out -l%,$$($(2)LDFLAGS)) \
+		-Wl,--start-group \
+		$$($(2)OBJS) \
+		$$(filter -l%,$$($(2)LDFLAGS)) \
+		-Wl,--end-group
 $(1).bin: $(1).elf
 	@echo + OBJCOPY "->" $$(patsubst $$(CURDIR)/%,%,$(1).bin)
 	@$$(OBJCOPY) -S --set-section-flags .bss=alloc,contents -O binary $(1).elf $(1).bin
