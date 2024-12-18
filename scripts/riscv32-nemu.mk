@@ -4,7 +4,6 @@ AM_CFLAGS  += -DISA_H=\"riscv/riscv.h\" -march=rv32im_zicsr -mabi=ilp32
 AM_ASFLAGS += -march=rv32im_zicsr -mabi=ilp32
 KLIB_CFLAGS += -march=rv32im_zicsr -mabi=ilp32
 INTERFACE_CFLAGS += -march=rv32im_zicsr -mabi=ilp32
-INTERFACE_CXXFLAGS += -march=rv32im_zicsr -mabi=ilp32
 INTERFACE_ASFLAGS += -march=rv32im_zicsr -mabi=ilp32
 INTERFACE_LDFLAGS += -Wl,-melf32lriscv
 

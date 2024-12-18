@@ -1,0 +1,7 @@
+Name: @@LIBRARY_NAME@@
+Description: Library description
+Version: @@VERSION@@
+
+Cflags: @@INTERFACE_CFLAGS@@
+Cxxflags: @@INTERFACE_CXXFLAGS@@
+Libs: @@INTERFACE_LDFLAGS@@

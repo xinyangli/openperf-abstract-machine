@@ -12,10 +12,9 @@ AM_SRCS := am/src/native/trm.c \
            am/src/native/ioe/audio.c \
            am/src/native/ioe/disk.c \
 
-AM_CFLAGS  += -fpie `sdl2-config --cflags`
+AM_CFLAGS  += -fpie $(shell sdl2-config --cflags)
 INTERFACE_CFLAGS += -fpie
-INTERFACE_CXXFLAGS += -fpie
-INTERFACE_LDFLAGS += `sdl2-config --libs` -ldl -lm
+INTERFACE_LDFLAGS += $(shell sdl2-config --libs) -ldl -lm
 
 # gdb: image
 # 	gdb -ex "handle SIGUSR1 SIGUSR2 SIGSEGV noprint nostop" $(IMAGE)

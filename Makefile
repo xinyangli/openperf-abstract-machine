@@ -1,3 +1,6 @@
+LIBRARY_NAME := abstract-machine
+VERSION := 0.0.1
+
 # Makefile for AbstractMachine Kernels and Libraries
 include scripts/helpers/rules.mk
 
@@ -90,7 +93,7 @@ INTERFACE_CFLAGS += -fno-asynchronous-unwind-tables \
 COMMON_CFLAGS += -D__ARCH_$(shell echo $(ARCH) | tr a-z A-Z | tr - _) \
                  -D__ISA_$(shell echo $(ISA) | tr a-z A-Z)__ \
                  -DARCH_H=\"$(ARCH_H)\"
-INTERFACE_CFLAGS += -DARCH_H=\"$(ARCH_H)\"
+INTERFACE_CFLAGS += -DARCH_H=<$(ARCH_H)>
 
 #### Generating build rules with ADD_LIBRARY call. Target specific build flags can be tuned via changing prefixed variables (AM_ here)
 AM_INCPATH += $(AM_HOME)/am/include $(AM_HOME)/am/src $(AM_HOME)/klib/include
@@ -122,26 +125,28 @@ $(LIBS): %: $(addsuffix -$(ARCH).a, $(addprefix $(LIB_BUILDDIR)/lib, %))
 INTERFACE_INCPATH += $(sort $(KLIB_INTERFACE_INCPATH) $(AM_INTERFACE_INCPATH))
 # TODO: Use sort here will cause error on seperated flags, such as: -e _start
 # but without sort, duplicated flags will not be removed.
-INTERFACE_CFLAGS += $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR))) $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
-INTERFACE_CXXFLAGS += $(INTERFACE_CFLAGS) $(addprefix -I, $(INTERFACE_INCPATH:%=$(INC_INSTALLDIR)))
+INTERFACE_CFLAGS += -I$(INC_INSTALLDIR) $(sort $(KLIB_INTERFACE_CFLAGS) $(AM_INTERFACE_CFLAGS))
 INTERFACE_LDFLAGS += -L$(LIB_INSTALLDIR) $(sort $(KLIB_INTERFACE_LDFLAGS) $(AM_INTERFACE_LDFLAGS))
 
-EXPORT_FLAGS_FILE := $(LIB_INSTALLDIR)/make/flags-$(ARCH).mk
-EXPORT_FLAGS_TEMPLATE := $(file < $(AM_HOME)/scripts/templates/flags.tmpl)
+EXPORT_PC_FILE := $(LIB_INSTALLDIR)/pkgconfig/$(LIBRARY_NAME).pc
 HELPERS := $(wildcard find scripts/helpers/*.mk)
 EXPORT_HELPERS := $(HELPERS:scripts/helpers/%=$(LIB_INSTALLDIR)/make/%)
-
-EXPORTS := $(EXPORT_FLAGS_FILE) $(EXPORT_HELPERS)
+EXPORTS := $(EXPORT_PC_FILE) $(EXPORT_HELPERS)
 
 $(EXPORT_HELPERS): $(LIB_INSTALLDIR)/make/%: scripts/helpers/%
 	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
 	@install -dm755 $(dir $@)
 	@install -Dm644 $< $(dir $@)
 
-export INTERFACE_CFLAGS INTERFACE_CXXFLAGS INTERFACE_ASFLAGS INTERFACE_INCPATH INTERFACE_LDFLAGS
-$(EXPORT_FLAGS_FILE):
-	@echo + INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)
-	@install -Dm644 <(printf $(EXPORT_FLAGS_TEMPLATE)) $(EXPORT_FLAGS_FILE)
+$(EXPORT_PC_FILE):
+	@echo "+ INSTALL $(patsubst $(INSTALLDIR)/%,%,$@)"
+	@mkdir -p $(dir $@)
+	@sed \
+		-e 's|@@LIBRARY_NAME@@|$(LIBRARY_NAME)|g' \
+		-e 's|@@VERSION@@|$(VERSION)|g' \
+		-e 's|@@INTERFACE_CFLAGS@@|$(INTERFACE_CFLAGS)|g' \
+		-e 's|@@INTERFACE_LDFLAGS@@|$(INTERFACE_LDFLAGS)|g' \
+		$(AM_HOME)/scripts/templates/abstract-machine.pc.in > $@
 
 LDSCRIPTS := $(patsubst $(AM_HOME)/scripts/%, $(LIB_INSTALLDIR)/ldscripts/%, $(shell find $(AM_HOME)/scripts -name "*.ld"))
 
@@ -174,5 +179,5 @@ clean:
 CLEAN_ALL = $(dir $(shell find . -mindepth 2 -name Makefile))
 clean-all: $(CLEAN_ALL) clean
 $(CLEAN_ALL):
-	-@$(MAKE) -s -C $@ cleaear
+	-@$(MAKE) -s -C $@ clear
 
