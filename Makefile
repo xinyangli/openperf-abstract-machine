@@ -58,14 +58,16 @@ INC_INSTALLDIR ?= $(INSTALLDIR)/include
 ## 3. Toolchain setup
 
 ### (Cross) compilers, e.g., mips-linux-gnu-g++
-CC        ?= $(CROSS_COMPILE)gcc
+ifdef CROSS_COMPILE
+CC        := $(CROSS_COMPILE)gcc
+CXX       := $(CROSS_COMPILE)g++
+LD        := $(CROSS_COMPILE)ld
+AR        := $(CROSS_COMPILE)ar
+OBJDUMP   := $(CROSS_COMPILE)objdump
+OBJCOPY   := $(CROSS_COMPILE)objcopy
+READELF   := $(CROSS_COMPILE)readelf
+endif
 AS        := $(CC)
-CXX       ?= $(CROSS_COMPILE)g++
-LD        ?= $(CROSS_COMPILE)ld
-AR        ?= $(CROSS_COMPILE)ar
-OBJDUMP   ?= $(CROSS_COMPILE)objdump
-OBJCOPY   ?= $(CROSS_COMPILE)objcopy
-READELF   ?= $(CROSS_COMPILE)readelf
 
 ## 4. Arch-Specific Configurations
 
